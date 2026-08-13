@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import math
 
 from thefuzz import fuzz
 
@@ -34,12 +35,15 @@ def similaridade(a: str, b: str) -> int:
 
 
 def _candidato(serie) -> dict:
+    saldo = serie.get("saldo_disponivel")
+    if isinstance(saldo, float) and math.isnan(saldo):
+        saldo = None
     return {
         "linha": int(serie.get("linha", 0)),
         "codigo_barras": str(serie.get("codigo_barras", "") or ""),
         "descricao": str(serie.get("descricao", "") or ""),
         "preco_unit": round(float(serie.get("preco_unit", 0.0) or 0.0), config.PRECISAO_VALOR),
-        "saldo_disponivel": float(serie.get("saldo_disponivel", 0.0) or 0.0),
+        "saldo_disponivel": saldo,
         "similaridade": 0,
     }
 
@@ -80,7 +84,8 @@ def corresponder_itens(item_pdf, df_itens, limiar=None) -> ResultadoMatch:
     if len(candidatos) == 1:
         escolhido = candidatos[0]
         status = STATUS_APROVADO
-        if item_pdf.quantidade > escolhido["saldo_disponivel"]:
+        saldo = escolhido["saldo_disponivel"]
+        if saldo is not None and item_pdf.quantidade > saldo:
             status = STATUS_SALDO_INSUFICIENTE
         return ResultadoMatch(
             item_pdf=item_pdf, status=status, escolhido=escolhido, candidatos=candidatos

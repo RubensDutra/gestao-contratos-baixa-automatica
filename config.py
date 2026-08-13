@@ -19,16 +19,20 @@ COLUNAS_ITENS = {
     "descricao": ["DESCRIÇÃO", "DESCRIÇÃO DO ITEM", "DESCRICAO", "PRODUTO", "ITEM"],
     "preco_unit": ["PREÇO UNIT. (R$)", "PREÇO UNIT", "PRECO UNIT", "VALOR UNITÁRIO", "VALOR UNIT", "PRECO UNITARIO"],
     "saldo": ["SALDO DISPONÍVEL (ATUAL)", "SALDO DISPONÍVEL", "SALDO ATUAL", "SALDO", "QTDE DISPONÍVEL"],
+    "grupo": ["GRUPO"],
+    "num_item": ["Nº ITEM", "NUM ITEM", "Nº ITEM (AUTO)", "NUM ITEM (AUTO)"],
 }
 
 COLUNAS_BAIXAS = {
     "data": ["DATA", "DATA DA BAIXA", "DATA LANÇAMENTO", "DATA LANCAMENTO"],
-    "of": ["OF", "Nº OF", "NUM OF", "ORDEM DE FORNECIMENTO", "NÚMERO OF", "NRO OF"],
+    "of": ["OF", "Nº OF", "NUM OF", "ORDEM DE FORNECIMENTO", "NÚMERO OF", "NRO OF", "Nº PEDIDO / NF / OF"],
     "codigo": ["CÓDIGO", "CODIGO", "CÓDIGO DE BARRAS", "CÓDIGO INTERNO"],
-    "descricao": ["DESCRIÇÃO", "DESCRICAO", "ITEM", "PRODUTO"],
-    "quantidade": ["QTDE", "QTD", "QUANTIDADE", "QUANTIDADE BAIXADA", "QTD BAIXADA"],
+    "descricao": ["DESCRIÇÃO", "DESCRICAO", "ITEM", "PRODUTO", "DESCRIÇÃO (AUTO)"],
+    "quantidade": ["QTDE", "QTD", "QUANTIDADE", "QUANTIDADE BAIXADA", "QTD BAIXADA", "QTD. BAIXADA"],
     "preco_unit": ["PREÇO UNIT", "PRECO UNIT", "VALOR UNITÁRIO", "VALOR UNIT"],
     "valor_total": ["VALOR TOTAL", "TOTAL", "VALOR", "VALOR (R$)"],
+    "grupo": ["GRUPO", "GRUPO (AUTO)"],
+    "num_item": ["Nº ITEM", "NUM ITEM", "Nº ITEM (AUTO)", "NUM ITEM (AUTO)"],
 }
 
 MAX_LINHAS_VARREDURA_CABECALHO = 10

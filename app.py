@@ -101,6 +101,12 @@ def sidebar_planilha() -> None:
         s["totais_originais"] = totais_contrato(dados)
         resetar_processamento()
         st.sidebar.success(f"Planilha carregada: {len(dados.df_itens)} itens | {origem[1]}")
+        ausentes_baixas = [c for c in config.COLUNAS_BAIXAS if c not in dados.mapa_baixas.colunas]
+        if ausentes_baixas:
+            st.sidebar.warning(
+                f"Aba '{dados.aba_baixas.title}': colunas não encontradas — {', '.join(ausentes_baixas)}. "
+                "Lançamentos serão gravados apenas nas colunas mapeadas."
+            )
 
 
 def sidebar_pdfs() -> None:

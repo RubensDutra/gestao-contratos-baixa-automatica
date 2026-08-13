@@ -73,17 +73,37 @@ def detectar_linha_cabecalho(ws, colunas_alvo: dict, max_linhas: int = None) -> 
 
 def mapear_colunas(ws, linha_cabecalho: int, colunas_alvo: dict) -> MapaColunas:
     mapa = MapaColunas(linha_cabecalho=linha_cabecalho)
-    for c in range(1, ws.max_column + 1):
-        valor = ws.cell(row=linha_cabecalho, column=c).value
-        if not valor:
-            continue
-        texto = normalizar_texto(valor)
-        for alvo, aliases in colunas_alvo.items():
-            for alias in aliases:
-                alias_norm = normalizar_para_comparacao(alias)
-                if alias_norm and (alias_norm == normalizar_para_comparacao(texto) or alias_norm in normalizar_para_comparacao(texto)):
-                    mapa.colunas[alvo] = ws.cell(row=linha_cabecalho, column=c).column_letter
+    celulas = {
+        ws.cell(row=linha_cabecalho, column=c).column_letter: normalizar_para_comparacao(
+            ws.cell(row=linha_cabecalho, column=c).value
+        )
+        for c in range(1, ws.max_column + 1)
+        if ws.cell(row=linha_cabecalho, column=c).value is not None
+    }
+    for alvo, aliases in colunas_alvo.items():
+        for alias in aliases:
+            an = normalizar_para_comparacao(alias)
+            if not an:
+                continue
+            for letra, t in celulas.items():
+                if an == t:
+                    mapa.colunas[alvo] = letra
                     break
+            if alvo in mapa.colunas:
+                break
+    for alvo, aliases in colunas_alvo.items():
+        if alvo in mapa.colunas:
+            continue
+        for alias in aliases:
+            an = normalizar_para_comparacao(alias)
+            if not an:
+                continue
+            for letra, t in celulas.items():
+                if an in t:
+                    mapa.colunas[alvo] = letra
+                    break
+            if alvo in mapa.colunas:
+                break
     return mapa
 
 
@@ -99,6 +119,12 @@ def parsear_valor(valor) -> float:
         return 0.0
 
 
+def _limpar_celula(v):
+    if isinstance(v, str) and v.startswith("'"):
+        return v[1:]
+    return v
+
+
 def _extrair_linhas(ws, mapa: MapaColunas, colunas_alvo: dict) -> list:
     linhas = []
     for r in range(mapa.linha_cabecalho + 1, ws.max_row + 1):
@@ -107,9 +133,9 @@ def _extrair_linhas(ws, mapa: MapaColunas, colunas_alvo: dict) -> list:
         for alvo in colunas_alvo:
             letra = mapa.letra(alvo)
             if letra:
-                v = ws[f"{letra}{r}"].value
+                v = _limpar_celula(ws[f"{letra}{r}"].value)
                 valores[alvo] = v
-                if v is not None and str(v).strip() != "":
+                if v is not None and str(v).strip() != "" and not str(v).lstrip().startswith("="):
                     vazia = False
         if not vazia:
             valores["linha"] = r
@@ -117,33 +143,32 @@ def _extrair_linhas(ws, mapa: MapaColunas, colunas_alvo: dict) -> list:
     return linhas
 
 
+def _garantir_colunas(df: pd.DataFrame, colunas: list) -> pd.DataFrame:
+    for col in colunas:
+        if col not in df.columns:
+            df[col] = None
+    return df[colunas]
+
+
 def extrair_itens(ws, mapa: MapaColunas) -> pd.DataFrame:
     linhas = _extrair_linhas(ws, mapa, config.COLUNAS_ITENS)
+    colunas = ["linha", "codigo_barras", "descricao", "preco_unit", "saldo_disponivel", "grupo", "num_item"]
     df = pd.DataFrame(linhas)
-    if df.empty:
-        return pd.DataFrame(columns=["linha", "codigo_barras", "descricao", "preco_unit", "saldo_disponivel"])
+    if not df.empty:
+        df = df.rename(columns={"saldo": "saldo_disponivel"})
+    df = _garantir_colunas(df, colunas)
     df["preco_unit"] = df["preco_unit"].apply(parsear_valor)
-    df = df.rename(columns={
-        "codigo_barras": "codigo_barras",
-        "descricao": "descricao",
-        "preco_unit": "preco_unit",
-        "saldo": "saldo_disponivel",
-    })
+    df["saldo_disponivel"] = pd.to_numeric(df["saldo_disponivel"], errors="coerce")
     return df.reset_index(drop=True)
 
 
 def extrair_baixas(ws, mapa: MapaColunas) -> pd.DataFrame:
     linhas = _extrair_linhas(ws, mapa, config.COLUNAS_BAIXAS)
+    colunas = ["linha", "data", "of", "codigo", "descricao", "quantidade", "preco_unit", "valor_total"]
     df = pd.DataFrame(linhas)
-    if df.empty:
-        return pd.DataFrame(columns=["linha", "data", "of", "codigo", "descricao", "quantidade", "preco_unit", "valor_total"])
+    df = _garantir_colunas(df, colunas)
     df["preco_unit"] = df["preco_unit"].apply(parsear_valor)
     df["valor_total"] = df["valor_total"].apply(parsear_valor)
-    df = df.rename(columns={
-        "data": "data", "of": "of", "codigo": "codigo",
-        "descricao": "descricao", "quantidade": "quantidade",
-        "preco_unit": "preco_unit", "valor_total": "valor_total",
-    })
     return df.reset_index(drop=True)
 
 
@@ -175,6 +200,9 @@ def carregar_planilha(origem) -> DadosPlanilha:
     if aba_baixas is None:
         aba_baixas = wb_template.active
 
+    aba_itens_valores = localizar_aba(wb_valores, [config.ABAS["itens"]])
+    aba_baixas_valores = localizar_aba(wb_valores, [config.ABAS["baixas"]])
+
     linha_cab = detectar_linha_cabecalho(aba_itens, config.COLUNAS_ITENS)
     mapa_itens = mapear_colunas(aba_itens, linha_cab, config.COLUNAS_ITENS)
 
@@ -189,8 +217,8 @@ def carregar_planilha(origem) -> DadosPlanilha:
             f"Colunas detectadas: {mapa_itens.colunas}"
         )
 
-    df_itens = extrair_itens(aba_itens, mapa_itens)
-    df_baixas = extrair_baixas(aba_baixas, mapa_baixas)
+    df_itens = extrair_itens(aba_itens_valores, mapa_itens)
+    df_baixas = extrair_baixas(aba_baixas_valores, mapa_baixas)
 
     return DadosPlanilha(
         caminho=caminho,
@@ -210,8 +238,10 @@ def totais_contrato(dados: DadosPlanilha) -> dict:
     df = dados.df_itens
     if df.empty:
         return {"valor_total": 0.0, "saldo_total": 0.0}
-    valor_total = float((df["preco_unit"].fillna(0) * df["saldo_disponivel"].fillna(0)).sum())
-    saldo_total = float(df["saldo_disponivel"].fillna(0).sum())
+    preco = pd.to_numeric(df["preco_unit"], errors="coerce").fillna(0.0)
+    saldo = pd.to_numeric(df["saldo_disponivel"], errors="coerce").fillna(0.0)
+    valor_total = float((preco * saldo).sum())
+    saldo_total = float(saldo.sum())
     return {"valor_total": round(valor_total, 2), "saldo_total": round(saldo_total, 2)}
 
 

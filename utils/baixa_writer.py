@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+import math
 
 from openpyxl.utils import get_column_letter, range_boundaries
 
@@ -14,6 +15,8 @@ class Lancamento:
     preco_unit: float
     valor_total: float
     linha: int = 0
+    grupo: str = ""
+    num_item: str = ""
     gravado: bool = False
 
 
@@ -26,10 +29,12 @@ def aplicar_baixas(dados, escolhas, numero_of="OF"):
         if len(idx) != 1:
             continue
         i = idx[0]
-        saldo_atual = float(dados.df_itens.at[i, "saldo_disponivel"])
-        if saldo_atual <= 0 or qtd > saldo_atual:
-            continue
-        dados.df_itens.at[i, "saldo_disponivel"] = saldo_atual - qtd
+        saldo_atual = dados.df_itens.at[i, "saldo_disponivel"]
+        if saldo_atual is not None and not (isinstance(saldo_atual, float) and math.isnan(saldo_atual)):
+            saldo_num = float(saldo_atual)
+            if saldo_num <= 0 or qtd > saldo_num:
+                continue
+            dados.df_itens.at[i, "saldo_disponivel"] = saldo_num - qtd
         preco = float(dados.df_itens.at[i, "preco_unit"] or 0.0)
         lancamentos.append(Lancamento(
             data=date.today().strftime("%d/%m/%Y"),
@@ -40,6 +45,8 @@ def aplicar_baixas(dados, escolhas, numero_of="OF"):
             preco_unit=preco,
             valor_total=round(qtd * preco, 2),
             linha=linha,
+            grupo=str(dados.df_itens.at[i, "grupo"] or ""),
+            num_item=str(dados.df_itens.at[i, "num_item"] or ""),
         ))
     dados.lancamentos.extend(lancamentos)
     return lancamentos
@@ -51,9 +58,9 @@ def desfazer_baixas(dados, lancamentos):
         idx = dados.df_itens.index[dados.df_itens["linha"] == lanc.linha]
         if len(idx) == 1:
             i = idx[0]
-            dados.df_itens.at[i, "saldo_disponivel"] = (
-                float(dados.df_itens.at[i, "saldo_disponivel"]) + lanc.quantidade
-            )
+            s = dados.df_itens.at[i, "saldo_disponivel"]
+            if s is not None and not (isinstance(s, float) and math.isnan(s)):
+                dados.df_itens.at[i, "saldo_disponivel"] = float(s) + lanc.quantidade
     dados.lancamentos = [l for l in dados.lancamentos if l not in lancamentos]
 
 
@@ -71,7 +78,8 @@ def _proxima_linha_livre(ws, linha_cab: int) -> int:
     for r in range(linha_cab + 1, ws.max_row + 2):
         vazia = True
         for c in range(1, ws.max_column + 1):
-            if ws.cell(row=r, column=c).value is not None:
+            v = ws.cell(row=r, column=c).value
+            if v is not None and (not isinstance(v, str) or not v.lstrip().startswith("=")):
                 vazia = False
                 break
         if vazia:
@@ -80,10 +88,10 @@ def _proxima_linha_livre(ws, linha_cab: int) -> int:
 
 
 def _celula_estilo(ws, linha_cab: int, r: int, letra: str):
-    for origem_r in range(r - 1, linha_cab - 1, -1):
+    for origem_r in range(r - 1, linha_cab, -1):
         if ws[f"{letra}{origem_r}"].value is not None:
             return ws[f"{letra}{origem_r}"]
-    return ws[f"{letra}{linha_cab}"]
+    return None
 
 
 def _formato_data(fmt: str) -> bool:
@@ -132,16 +140,21 @@ def gravar_no_template(dados, lancamentos) -> int:
             ("quantidade", lanc.quantidade),
             ("preco_unit", lanc.preco_unit),
             ("valor_total", lanc.valor_total),
+            ("grupo", lanc.grupo),
+            ("num_item", lanc.num_item),
         ):
             letra = mapa.letra(alvo)
             if not letra:
                 continue
             origem = _celula_estilo(aba_baixas, mapa.linha_cabecalho, r, letra)
             cell = aba_baixas[f"{letra}{r}"]
-            if alvo == "data" and _formato_data(origem.number_format):
+            if isinstance(cell.value, str) and cell.value.lstrip().startswith("="):
+                continue
+            if alvo == "data" and origem is not None and _formato_data(origem.number_format):
                 valor = datetime.strptime(lanc.data, "%d/%m/%Y").date()
             cell.value = valor
-            cell._style = origem._style
+            if origem is not None:
+                cell._style = origem._style
         lanc.gravado = True
 
     _estender_tabelas(aba_baixas, free, len(pendentes))
