@@ -1,0 +1,366 @@
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+import config
+from utils.baixa_writer import aplicar_baixas, desfazer_baixas
+from utils.excel_loader import carregar_planilha, totais_contrato, ErroPlanilha
+from utils.matcher import (
+    corresponder_todos,
+    resumo,
+    STATUS_APROVADO,
+    STATUS_DUPLICIDADE,
+    STATUS_NAO_ENCONTRADO,
+    STATUS_SALDO_INSUFICIENTE,
+)
+from utils.pdf_extractor import extrair_itens_pdf, extrair_numero_of
+
+st.set_page_config(page_title="Gestão de Contratos — Baixa Automática", page_icon="📋", layout="wide")
+
+CSS = Path("assets/style.css").read_text(encoding="utf-8")
+
+LABEL_STATUS = {
+    STATUS_APROVADO: "✅ Aprovado",
+    STATUS_DUPLICIDADE: "⚠️ Duplicidade",
+    STATUS_NAO_ENCONTRADO: "❌ Não encontrado",
+    STATUS_SALDO_INSUFICIENTE: "⚠️ Saldo insuficiente",
+}
+
+BADGE_STATUS = {
+    STATUS_APROVADO: "badge-ok",
+    STATUS_DUPLICIDADE: "badge-dup",
+    STATUS_NAO_ENCONTRADO: "badge-falha",
+    STATUS_SALDO_INSUFICIENTE: "badge-saldo",
+}
+
+
+def fmt_moeda(v) -> str:
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def injetar_css() -> None:
+    st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+
+
+def iniciar_estado() -> None:
+    s = st.session_state
+    s.setdefault("dados", None)
+    s.setdefault("origem_nome", None)
+    s.setdefault("totais_originais", None)
+    s.setdefault("fontes_pdf", [])
+    s.setdefault("itens_pdf", [])
+    s.setdefault("origens", [])
+    s.setdefault("resultados", [])
+    s.setdefault("escolhas", {})
+    s.setdefault("baixa_aplicada", False)
+    s.setdefault("lancamentos", [])
+    s.setdefault("tema", "escuro")
+
+
+def resetar_processamento() -> None:
+    s = st.session_state
+    s["fontes_pdf"] = []
+    s["itens_pdf"] = []
+    s["origens"] = []
+    s["resultados"] = []
+    s["escolhas"] = {}
+    s["baixa_aplicada"] = False
+    s["lancamentos"] = []
+    s["dados"].lancamentos = []
+
+
+def sidebar_planilha() -> None:
+    s = st.session_state
+    st.sidebar.subheader("📊 Planilha base")
+    opcao = st.sidebar.radio("Origem", ["Upload (.xlsx)", "Pasta data/inputs"], horizontal=True)
+    origem = None
+    if opcao == "Upload (.xlsx)":
+        up = st.sidebar.file_uploader("CONTROLE_DE_CONTRATO.xlsx", type=["xlsx"])
+        if up is not None:
+            origem = (up, up.name)
+    else:
+        padrao = config.PLANILHA_PADRAO
+        if padrao.exists():
+            st.sidebar.caption(f"Usando: `{padrao.name}`")
+            origem = (padrao, padrao.name)
+        else:
+            st.sidebar.caption("Nenhum arquivo em `data/inputs/`.")
+
+    if origem is not None and origem[1] != s["origem_nome"]:
+        try:
+            dados = carregar_planilha(origem[0])
+        except ErroPlanilha as e:
+            st.sidebar.error(str(e))
+            return
+        s["dados"] = dados
+        s["origem_nome"] = origem[1]
+        s["totais_originais"] = totais_contrato(dados)
+        resetar_processamento()
+        st.sidebar.success(f"Planilha carregada: {len(dados.df_itens)} itens | {origem[1]}")
+
+
+def sidebar_pdfs() -> None:
+    s = st.session_state
+    st.sidebar.subheader("📄 Ordens de Fornecimento (PDF)")
+    uploads = st.sidebar.file_uploader("Arquivos PDF da OF", type=["pdf"], accept_multiple_files=True)
+    fontes = [(u.name, u) for u in (uploads or [])]
+
+    if config.PDFS_PADRAO.exists():
+        with st.sidebar.expander("📁 PDFs em data/inputs"):
+            pdfs_pasta = sorted(config.PDFS_PADRAO.glob("*.pdf"))
+            if not pdfs_pasta:
+                st.caption("Nenhum PDF na pasta.")
+            for p in pdfs_pasta:
+                if st.checkbox(p.name, key=f"pdf_pasta_{p.name}"):
+                    fontes.append((p.name, p))
+
+    chave = "|".join(n for n, _ in fontes)
+    if not fontes:
+        s["fontes_pdf"] = []
+        s["itens_pdf"] = []
+        s["origens"] = []
+        s["resultados"] = []
+        s["escolhas"] = {}
+        s["baixa_aplicada"] = False
+        s["lancamentos"] = []
+        return
+
+    if chave != s["fontes_pdf"]:
+        s["fontes_pdf"] = chave
+        itens, origens = [], []
+        for nome, fonte in fontes:
+            try:
+                if hasattr(fonte, "seek"):
+                    fonte.seek(0)
+                it = extrair_itens_pdf(fonte)
+            except Exception as e:
+                st.sidebar.error(f"Falha ao ler {nome}: {e}")
+                it = []
+            itens.extend(it)
+            origens.extend([nome] * len(it))
+        s["itens_pdf"] = itens
+        s["origens"] = origens
+        if s["dados"] is not None:
+            s["resultados"] = corresponder_todos(itens, s["dados"].df_itens)
+        s["baixa_aplicada"] = False
+        s["lancamentos"] = []
+        st.sidebar.caption(f"{len(itens)} itens lidos dos PDFs")
+
+
+def render_cards(totais_originais: dict, of_total: float | None) -> None:
+    s = st.session_state
+    tema = "tema-escuro" if s["tema"] == "escuro" else "tema-claro"
+    totais_atual = totais_contrato(s["dados"])
+    of_valor = of_total if of_total is not None else 0.0
+    of_sub = "—" if of_total is None else f"{len(s['itens_pdf'])} itens na OF"
+    baixado = round(totais_originais["valor_total"] - totais_atual["valor_total"], 2)
+    baixa_sub = "nenhuma baixa nesta sessão" if baixado == 0 else f"R$ {fmt_moeda(baixado)} já baixados"
+    html = f"""
+    <div class="cards {tema}">
+      <div class="card card-total">
+        <div class="card-label">Valor Total do Contrato</div>
+        <div class="card-value">{fmt_moeda(totais_originais["valor_total"])}</div>
+        <div class="card-sub">saldo inicial: {totais_originais["saldo_total"]:,.0f} unidades</div>
+      </div>
+      <div class="card card-saldo">
+        <div class="card-label">Saldo Disponível</div>
+        <div class="card-value">{fmt_moeda(totais_atual["valor_total"])}</div>
+        <div class="card-sub">{baixa_sub}</div>
+      </div>
+      <div class="card card-of">
+        <div class="card-label">Valor Total da OF Atual</div>
+        <div class="card-value">{fmt_moeda(of_valor)}</div>
+        <div class="card-sub">{of_sub}</div>
+      </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_badges() -> None:
+    s = st.session_state
+    if not s["resultados"]:
+        return
+    contagem = resumo(s["resultados"])
+    html = '<div class="status-badges">'
+    ordem = [STATUS_APROVADO, STATUS_DUPLICIDADE, STATUS_SALDO_INSUFICIENTE, STATUS_NAO_ENCONTRADO]
+    for status in ordem:
+        if contagem.get(status, 0) > 0:
+            html += f'<span class="badge {BADGE_STATUS[status]}">{LABEL_STATUS[status]}: {contagem[status]}</span>'
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def _linha_tabela(r, nome_of: str) -> dict:
+    it = r.item_pdf
+    e = r.escolhido
+    if r.status == STATUS_DUPLICIDADE:
+        ordem_item = it.ordem
+        escolha = st.session_state["escolhas"].get(ordem_item)
+        e = next((c for c in r.candidatos if c["linha"] == escolha), None)
+    return {
+        "OF": nome_of,
+        "PDF - Código": it.codigo,
+        "PDF - Descrição": it.descricao,
+        "PDF - Qtd": f"{it.quantidade:g} {it.unidade}",
+        "PDF - Valor Unit": fmt_moeda(it.valor_unitario),
+        "PDF - Total": fmt_moeda(it.valor_total),
+        "Planilha - Linha": str((e or {}).get("linha", "—")),
+        "Planilha - Código": (e or {}).get("codigo_barras", "—"),
+        "Planilha - Descrição": (e or {}).get("descricao", "—"),
+        "Planilha - Saldo": f"{(e or {}).get('saldo_disponivel', 0.0):g}",
+        "Similaridade": f"{(e or {}).get('similaridade', 0)}%" if e else "—",
+        "Status": LABEL_STATUS[r.status],
+    }
+
+
+def render_tabela() -> None:
+    s = st.session_state
+    if not s["resultados"]:
+        return
+    st.subheader("🔎 Conferência: PDF da OF × Planilha")
+    linhas = [_linha_tabela(r, s["origens"][r.item_pdf.ordem]) for r in s["resultados"]]
+    df = pd.DataFrame(linhas)
+    cores = {
+        "✅ Aprovado": "#4caf50",
+        "⚠️ Duplicidade": "#ff9800",
+        "❌ Não encontrado": "#f44336",
+        "⚠️ Saldo insuficiente": "#ff9800",
+    }
+
+    def estilo_status(v):
+        cor = cores.get(v, "#888")
+        return f"color: {cor}; font-weight: 600;"
+
+    estilizado = df.style.map(estilo_status, subset=["Status"])
+    st.dataframe(
+        estilizado,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "PDF - Descrição": st.column_config.TextColumn(width="large"),
+            "Planilha - Descrição": st.column_config.TextColumn(width="large"),
+        },
+    )
+
+
+def render_detalhes() -> None:
+    s = st.session_state
+    for r in s["resultados"]:
+        it = r.item_pdf
+        if r.status == STATUS_DUPLICIDADE:
+            with st.expander(f"⚠️ Duplicidade — escolha o grupo para: {it.descricao[:70]}", expanded=True):
+                opcoes = {
+                    f"Linha {c['linha']} · código {c['codigo_barras']} · saldo {c['saldo_disponivel']:g} · sim {c['similaridade']}%"
+                    : c["linha"]
+                    for c in r.candidatos
+                }
+                escolha = st.radio("De qual grupo/item descontar?", list(opcoes), key=f"dup_{it.ordem}")
+                s["escolhas"][it.ordem] = opcoes[escolha]
+        elif r.status == STATUS_NAO_ENCONTRADO:
+            st.error(
+                f"Item não encontrado na planilha: **{it.descricao}** "
+                f"({it.quantidade:g} {it.unidade} · {fmt_moeda(it.valor_unitario)})"
+            )
+            if r.sugestoes:
+                with st.expander("Possíveis itens próximos (descrição similar, valor divergente)"):
+                    st.dataframe(
+                        pd.DataFrame(r.sugestoes)[
+                            ["linha", "codigo_barras", "descricao", "preco_unit", "saldo_disponivel", "similaridade"]
+                        ],
+                        width="stretch",
+                        hide_index=True,
+                    )
+        elif r.status == STATUS_SALDO_INSUFICIENTE:
+            e = r.escolhido
+            st.warning(
+                f"Saldo insuficiente: **{it.descricao}** — OF pede {it.quantidade:g} "
+                f"e o saldo na planilha é {e['saldo_disponivel']:g} (linha {e['linha']})."
+            )
+
+
+def render_confirmar() -> None:
+    s = st.session_state
+    if s["baixa_aplicada"]:
+        st.success(f"✅ Baixa aplicada: {len(s['lancamentos'])} lançamentos gerados.")
+        if s["lancamentos"]:
+            df = pd.DataFrame([l.__dict__ for l in s["lancamentos"]])
+            st.dataframe(
+                df[["data", "of", "codigo", "descricao", "quantidade", "preco_unit", "valor_total", "linha"]],
+                width="stretch",
+                hide_index=True,
+            )
+        st.caption("A exportação da planilha atualizada com preservação total do layout será liberada na Etapa 5.")
+        if st.button("↩️ Desfazer baixa", width="stretch"):
+            desfazer_baixas(s["dados"], s["lancamentos"])
+            s["lancamentos"] = []
+            s["baixa_aplicada"] = False
+            st.rerun()
+        return
+
+    baixaveis = [
+        r for r in s["resultados"]
+        if r.status == STATUS_APROVADO
+        or (r.status == STATUS_DUPLICIDADE and r.item_pdf.ordem in s["escolhas"])
+    ]
+    if not baixaveis:
+        st.caption("Nenhum item pronto para baixa — resolva duplicidades e itens não encontrados.")
+        return
+    total_valor = sum(r.item_pdf.quantidade * r.item_pdf.valor_unitario for r in baixaveis)
+    if st.button(
+        f"✅ Confirmar e Dar Baixa ({len(baixaveis)} itens · {fmt_moeda(total_valor)})",
+        type="primary",
+        width="stretch",
+    ):
+        escolhas = []
+        for r in baixaveis:
+            if r.status == STATUS_APROVADO:
+                escolhas.append({"linha": r.escolhido["linha"], "quantidade": r.item_pdf.quantidade})
+            else:
+                escolhas.append({"linha": s["escolhas"][r.item_pdf.ordem], "quantidade": r.item_pdf.quantidade})
+        numero_of = extrair_numero_of(s["origens"][0]) if s["origens"] else "OF"
+        s["lancamentos"] = aplicar_baixas(s["dados"], escolhas, numero_of)
+        s["baixa_aplicada"] = True
+        st.rerun()
+
+
+def main() -> None:
+    injetar_css()
+    iniciar_estado()
+    s = st.session_state
+
+    st.sidebar.title("📋 Gestão de Contratos")
+    s["tema"] = "escuro" if st.sidebar.toggle("🌙 Tema escuro", value=s["tema"] == "escuro") else "claro"
+    st.sidebar.divider()
+    sidebar_planilha()
+    sidebar_pdfs()
+    st.sidebar.divider()
+    if st.sidebar.button("🗑️ Reiniciar sessão", width="stretch"):
+        for k in list(s.keys()):
+            del s[k]
+        st.rerun()
+
+    if s["dados"] is None:
+        st.info("👈 Carregue a planilha base (CONTROLE_DE_CONTRATO.xlsx) no menu lateral para começar.")
+        return
+
+    st.title("📋 Controle e Baixa Automatizada de Contrato")
+    st.caption(f"Planilha: `{s['origem_nome']}`")
+
+    of_total = sum(it.valor_total for it in s["itens_pdf"]) if s["itens_pdf"] else None
+    render_cards(s["totais_originais"], of_total)
+
+    if not s["itens_pdf"]:
+        st.info("👈 Carregue o(s) PDF(s) da Ordem de Fornecimento no menu lateral.")
+        return
+
+    render_badges()
+    render_tabela()
+    render_detalhes()
+    st.divider()
+    render_confirmar()
+
+
+if __name__ == "__main__":
+    main()

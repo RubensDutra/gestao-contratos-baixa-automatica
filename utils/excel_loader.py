@@ -33,6 +33,7 @@ class DadosPlanilha:
     mapa_baixas: MapaColunas = None
     df_itens: pd.DataFrame = None
     df_baixas: pd.DataFrame = None
+    lancamentos: list = field(default_factory=list)
 
 
 def localizar_aba(wb, nomes_alvo: list):
@@ -146,13 +147,21 @@ def extrair_baixas(ws, mapa: MapaColunas) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def carregar_planilha(caminho) -> DadosPlanilha:
-    caminho = Path(caminho)
-    if not caminho.exists():
-        raise ErroPlanilha(f"Arquivo não encontrado: {caminho}")
-
-    wb_template = load_workbook(caminho, data_only=False)
-    wb_valores = load_workbook(caminho, data_only=True)
+def carregar_planilha(origem) -> DadosPlanilha:
+    if isinstance(origem, (str, Path)):
+        caminho = Path(origem)
+        if not caminho.exists():
+            raise ErroPlanilha(f"Arquivo não encontrado: {caminho}")
+        nome = caminho.name
+        wb_template = load_workbook(caminho, data_only=False)
+        wb_valores = load_workbook(caminho, data_only=True)
+    else:
+        origem.seek(0)
+        wb_template = load_workbook(origem, data_only=False)
+        origem.seek(0)
+        wb_valores = load_workbook(origem, data_only=True)
+        nome = getattr(origem, "name", "planilha.xlsx")
+        caminho = Path(nome)
 
     aba_itens = localizar_aba(wb_template, [config.ABAS["itens"]])
     aba_baixas = localizar_aba(wb_template, [config.ABAS["baixas"]])

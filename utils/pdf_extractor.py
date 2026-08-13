@@ -197,6 +197,11 @@ def _extrair_tabela_pagina(pagina) -> list:
     return itens
 
 
+def extrair_numero_of(nome_arquivo: str) -> str:
+    m = re.search(r"OF[-_ ]?\d+[_-]?\d*", str(nome_arquivo).upper())
+    return m.group(0) if m else "OF"
+
+
 def extrair_texto_pdf(caminho_pdf: str) -> str:
     partes = []
     with pdfplumber.open(caminho_pdf) as pdf:
