@@ -1,11 +1,12 @@
 from pathlib import Path
+from datetime import date
 
 import pandas as pd
 import streamlit as st
 
 import config
-from utils.baixa_writer import aplicar_baixas, desfazer_baixas
-from utils.excel_loader import carregar_planilha, totais_contrato, ErroPlanilha
+from utils.baixa_writer import aplicar_baixas, desfazer_baixas, gravar_no_template
+from utils.excel_loader import carregar_planilha, totais_contrato, exportar_bytes, ErroPlanilha
 from utils.matcher import (
     corresponder_todos,
     resumo,
@@ -55,6 +56,7 @@ def iniciar_estado() -> None:
     s.setdefault("escolhas", {})
     s.setdefault("baixa_aplicada", False)
     s.setdefault("lancamentos", [])
+    s.setdefault("planilha_bytes", None)
     s.setdefault("tema", "escuro")
 
 
@@ -67,6 +69,7 @@ def resetar_processamento() -> None:
     s["escolhas"] = {}
     s["baixa_aplicada"] = False
     s["lancamentos"] = []
+    s["planilha_bytes"] = None
     s["dados"].lancamentos = []
 
 
@@ -291,11 +294,34 @@ def render_confirmar() -> None:
                 width="stretch",
                 hide_index=True,
             )
-        st.caption("A exportação da planilha atualizada com preservação total do layout será liberada na Etapa 5.")
+        if s["planilha_bytes"]:
+            st.download_button(
+                "📥 Salvar planilha atualizada (.xlsx)",
+                data=s["planilha_bytes"],
+                file_name=f"CONTROLE_DE_CONTRATO_ATUALIZADO_{date.today().isoformat()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+            )
+            if st.button("💾 Salvar cópia em data/export", width="stretch"):
+                destino = config.EXPORT_DIR / f"CONTROLE_DE_CONTRATO_ATUALIZADO_{date.today().isoformat()}.xlsx"
+                destino.parent.mkdir(parents=True, exist_ok=True)
+                destino.write_bytes(s["planilha_bytes"])
+                st.success(f"Salvo em: `{destino}`")
+        else:
+            if st.button("⬇️ Preparar planilha atualizada (preserva layout)", type="primary", width="stretch"):
+                gravar_no_template(s["dados"], s["lancamentos"])
+                s["planilha_bytes"] = exportar_bytes(s["dados"])
+                st.rerun()
+        st.caption(
+            "O arquivo é o próprio Excel original editado em memória (openpyxl): cores, estilos, "
+            "mesclagens, larguras e fórmulas (SUMIFS, IFERROR...) são preservados. "
+            "Fórmulas recalculam ao abrir no Excel."
+        )
         if st.button("↩️ Desfazer baixa", width="stretch"):
             desfazer_baixas(s["dados"], s["lancamentos"])
             s["lancamentos"] = []
             s["baixa_aplicada"] = False
+            s["planilha_bytes"] = None
             st.rerun()
         return
 

@@ -219,3 +219,11 @@ def salvar_template(dados: DadosPlanilha, destino) -> None:
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     dados.wb_template.save(destino)
+
+
+def exportar_bytes(dados: DadosPlanilha) -> bytes:
+    from io import BytesIO
+
+    buf = BytesIO()
+    dados.wb_template.save(buf)
+    return buf.getvalue()
