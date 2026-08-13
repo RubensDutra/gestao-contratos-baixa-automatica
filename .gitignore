@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Streamlit
+.streamlit/
+
+# Dados sensíveis do contrato (não vão para o GitHub)
+data/*.xlsx
+data/export/
+data/inputs/
+
+# SO
+.DS_Store
+Thumbs.db
+desktop.ini
