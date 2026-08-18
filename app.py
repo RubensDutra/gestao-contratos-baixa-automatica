@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 import streamlit as st
@@ -38,6 +38,12 @@ BADGE_STATUS = {
 
 def fmt_moeda(v) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def fmt_saldo(v) -> str:
+    if v is None:
+        return "?"
+    return f"{v:g}"
 
 
 def injetar_css() -> None:
@@ -91,6 +97,7 @@ def sidebar_planilha() -> None:
             origem = (padrao, padrao.name)
         else:
             st.sidebar.caption("Nenhum arquivo em `data/inputs/`.")
+    s["origem_caminho"] = origem[0] if origem is not None and isinstance(origem[0], Path) else None
 
     if origem is not None and origem[1] != s["origem_nome"]:
         try:
@@ -231,7 +238,7 @@ def _linha_tabela(r, nome_of: str) -> dict:
         "Planilha - Linha": linha_mostrada,
         "Planilha - Código": (e or {}).get("codigo_barras", "—"),
         "Planilha - Descrição": (e or {}).get("descricao", "—"),
-        "Planilha - Saldo": f"{(e or {}).get('saldo_disponivel', 0.0):g}",
+        "Planilha - Saldo": fmt_saldo((e or {}).get("saldo_disponivel")),
         "Similaridade": f"{(e or {}).get('similaridade', 0)}%" if e else "—",
         "Situação": LABEL_STATUS[r.status],
     }
@@ -277,7 +284,7 @@ def render_detalhes() -> None:
                 expanded=True,
             ):
                 opcoes = {
-                    f"Linha {c['linha']} · código {c['codigo_barras']} · saldo {c['saldo_disponivel']:g} · sim {c['similaridade']}%"
+                    f"Linha {c['linha']} · código {c['codigo_barras']} · saldo {fmt_saldo(c['saldo_disponivel'])} · sim {c['similaridade']}%"
                     : c["linha"]
                     for c in r.candidatos
                 }
@@ -308,7 +315,7 @@ def render_detalhes() -> None:
                 opcoes = [("(não usar — deixar de fora)", None)] + [
                     (
                         f"Linha {sg['linha']} · {sg['descricao'][:45]} · {fmt_moeda(sg['preco_unit'])} "
-                        f"· saldo {sg['saldo_disponivel']:g} · sim {sg['similaridade']}%",
+                        f"· saldo {fmt_saldo(sg['saldo_disponivel'])} · sim {sg['similaridade']}%",
                         sg["linha"],
                     )
                     for sg in r.sugestoes
@@ -351,6 +358,15 @@ def render_confirmar() -> None:
                 destino.parent.mkdir(parents=True, exist_ok=True)
                 destino.write_bytes(s["planilha_bytes"])
                 st.success(f"Salvo em: `{destino}`")
+            if s.get("origem_caminho"):
+                if st.button("💾 Atualizar CONTROLE_DE_CONTRATO.xlsx (com backup)", width="stretch"):
+                    origem = s["origem_caminho"]
+                    backup_dir = config.DATA_DIR / "backup"
+                    backup_dir.mkdir(parents=True, exist_ok=True)
+                    backup = backup_dir / f"CONTROLE_DE_CONTRATO_BACKUP_{date.today().isoformat()}_{datetime.now().strftime('%H%M%S')}.xlsx"
+                    backup.write_bytes(origem.read_bytes())
+                    origem.write_bytes(s["planilha_bytes"])
+                    st.success(f"Original atualizado (backup em `{backup}`)")
         else:
             if st.button("⬇️ Preparar planilha atualizada (preserva layout)", type="primary", width="stretch"):
                 gravar_no_template(s["dados"], s["lancamentos"])
