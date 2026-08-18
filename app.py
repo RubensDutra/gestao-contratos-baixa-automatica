@@ -14,6 +14,7 @@ from utils.matcher import (
     STATUS_DUPLICIDADE,
     STATUS_NAO_ENCONTRADO,
     STATUS_SALDO_INSUFICIENTE,
+    adicionar_sinonimo,
 )
 from utils.pdf_extractor import extrair_itens_pdf, extrair_numero_of
 
@@ -61,6 +62,7 @@ def iniciar_estado() -> None:
     s.setdefault("resultados", [])
     s.setdefault("escolhas", {})
     s.setdefault("forcados", {})
+    s.setdefault("sinonimos_pendentes", {})
     s.setdefault("baixa_aplicada", False)
     s.setdefault("lancamentos", [])
     s.setdefault("planilha_bytes", None)
@@ -75,6 +77,7 @@ def resetar_processamento() -> None:
     s["resultados"] = []
     s["escolhas"] = {}
     s["forcados"] = {}
+    s["sinonimos_pendentes"] = {}
     s["baixa_aplicada"] = False
     s["lancamentos"] = []
     s["planilha_bytes"] = None
@@ -141,6 +144,7 @@ def sidebar_pdfs() -> None:
         s["resultados"] = []
         s["escolhas"] = {}
         s["forcados"] = {}
+        s["sinonimos_pendentes"] = {}
         s["baixa_aplicada"] = False
         s["lancamentos"] = []
         return
@@ -167,6 +171,7 @@ def sidebar_pdfs() -> None:
         s["baixa_aplicada"] = False
         s["lancamentos"] = []
         s["forcados"] = {}
+        s["sinonimos_pendentes"] = {}
         st.sidebar.caption(f"{len(itens)} itens lidos dos PDFs")
 
 
@@ -324,8 +329,21 @@ def render_detalhes() -> None:
                 escolha = st.selectbox("Corrigir manualmente — usar item da planilha?", rotulos, key=f"forc_{it.ordem}")
                 if escolha.startswith("(não usar"):
                     s["forcados"].pop(it.ordem, None)
+                    s["sinonimos_pendentes"].pop(it.ordem, None)
                 else:
-                    s["forcados"][it.ordem] = next(v for r_, v in opcoes if r_ == escolha)
+                    linha_escolhida = next(v for r_, v in opcoes if r_ == escolha)
+                    s["forcados"][it.ordem] = linha_escolhida
+                    sg = next((c for c in r.sugestoes if c["linha"] == linha_escolhida), None)
+                    if sg and sg.get("descricao"):
+                        salvar = st.checkbox(
+                            f"💡 Salvar sinônimo: “{it.descricao[:55]}” = “{sg['descricao'][:55]}”",
+                            value=True,
+                            key=f"sin_{it.ordem}",
+                        )
+                        if salvar:
+                            s["sinonimos_pendentes"][it.ordem] = (it.descricao, sg["descricao"])
+                        else:
+                            s["sinonimos_pendentes"].pop(it.ordem, None)
         elif r.status == STATUS_SALDO_INSUFICIENTE:
             e = r.escolhido
             st.warning(
@@ -338,6 +356,8 @@ def render_confirmar() -> None:
     s = st.session_state
     if s["baixa_aplicada"]:
         st.success(f"✅ Baixa aplicada: {len(s['lancamentos'])} lançamentos gerados.")
+        if s.get("sinonimos_salvos"):
+            st.success(f"💡 {s['sinonimos_salvos']} sinônimo(s) adicionado(s) ao sinonimos.txt")
         if s["lancamentos"]:
             df = pd.DataFrame([l.__dict__ for l in s["lancamentos"]])
             st.dataframe(
@@ -413,6 +433,13 @@ def render_confirmar() -> None:
             else:
                 for linha in s["escolhas"][r.item_pdf.ordem]:
                     escolhas.append({"linha": linha, "quantidade": r.item_pdf.quantidade})
+        pendentes_sin = list(s.get("sinonimos_pendentes", {}).values())
+        if pendentes_sin:
+            adicionados = [adicionar_sinonimo(pdf, plan) for pdf, plan in pendentes_sin]
+            s["sinonimos_pendentes"] = {}
+            s["sinonimos_salvos"] = sum(adicionados)
+        else:
+            s["sinonimos_salvos"] = 0
         numero_of = extrair_numero_of(s["origens"][0]) if s["origens"] else "OF"
         s["lancamentos"] = aplicar_baixas(s["dados"], escolhas, numero_of)
         s["baixa_aplicada"] = True

@@ -68,6 +68,25 @@ def _sim_max(descricao_pdf: str, descricao_plan: str, sinonimos: list) -> int:
     return max(similaridade(v, descricao_plan) for v in _variantes(descricao_pdf, sinonimos))
 
 
+def adicionar_sinonimo(pdf_descricao: str, planilha_descricao: str, caminho=None) -> bool:
+    p = caminho or config.SINONIMOS_PATH
+    if not p.exists():
+        carregar_sinonimos(p)
+    pdf_n = (pdf_descricao or "").strip().upper()
+    plan_n = (planilha_descricao or "").strip().upper()
+    if not pdf_n or not plan_n or pdf_n == plan_n:
+        return False
+    for errado, certo in carregar_sinonimos(p):
+        if errado == pdf_n and certo == plan_n:
+            return False
+    texto = p.read_text(encoding="utf-8")
+    with p.open("a", encoding="utf-8") as f:
+        if texto and not texto.endswith("\n"):
+            f.write("\n")
+        f.write(f"{pdf_n} = {plan_n}\n")
+    return True
+
+
 def _candidato(serie) -> dict:
     saldo = serie.get("saldo_disponivel")
     if isinstance(saldo, float) and math.isnan(saldo):
