@@ -4,8 +4,14 @@ import json
 import config
 
 
+def _caminho(p=None):
+    if p is not None:
+        return p
+    return getattr(config, "HISTORICO_PATH", None) or (config.DATA_DIR / "historico_baixas.json")
+
+
 def ler_historico(caminho=None) -> list:
-    p = caminho or config.HISTORICO_PATH
+    p = _caminho(caminho)
     if not p.exists():
         return []
     try:
@@ -15,7 +21,7 @@ def ler_historico(caminho=None) -> list:
 
 
 def registrar_baixa(numero_of, lancamentos, arquivo_origem=None, caminho=None, max_entradas=50) -> None:
-    p = caminho or config.HISTORICO_PATH
+    p = _caminho(caminho)
     p.parent.mkdir(parents=True, exist_ok=True)
     registros = ler_historico(p)
     itens = [
