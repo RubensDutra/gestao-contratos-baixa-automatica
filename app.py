@@ -200,6 +200,7 @@ def render_cards(totais_originais: dict, of_total: float | None) -> None:
     of_valor = of_total if of_total is not None else 0.0
     of_sub = "—" if of_total is None else f"{len(s['itens_pdf'])} itens na OF"
     saldo_sessao = s.get("saldos_sessao") or {"unid": 0.0, "valor": 0.0}
+    valor_contratado = totais_originais.get("valor_contratado", totais_originais.get("valor_total", 0.0))
     baixado_unid = totais_originais["saldo_total"] - saldo_sessao["unid"]
     baixa_sub = (
         "nenhuma baixa nesta sessão"
@@ -210,7 +211,7 @@ def render_cards(totais_originais: dict, of_total: float | None) -> None:
     <div class="cards {tema}">
       <div class="card card-total">
         <div class="card-label">Valor Total do Contrato</div>
-        <div class="card-value">{fmt_moeda(totais_originais["valor_contratado"])}</div>
+        <div class="card-value">{fmt_moeda(valor_contratado)}</div>
         <div class="card-sub">valor fixo do contrato · saldo inicial: {totais_originais["saldo_total"]:,.0f} unid</div>
       </div>
       <div class="card card-saldo">
@@ -530,6 +531,16 @@ def render_confirmar() -> None:
         st.rerun()
 
 
+def valor_total_of(itens) -> float:
+    total = 0.0
+    for it in itens:
+        vt = it.valor_total or 0.0
+        if vt <= 0:
+            vt = (it.quantidade or 0.0) * (it.valor_unitario or 0.0)
+        total += vt
+    return round(total, 2)
+
+
 def main() -> None:
     injetar_css()
     iniciar_estado()
@@ -554,7 +565,7 @@ def main() -> None:
     st.title("📋 Controle e Baixa Automatizada de Contrato")
     st.caption(f"Planilha: `{s['origem_nome']}`")
 
-    of_total = sum(it.valor_total for it in s["itens_pdf"]) if s["itens_pdf"] else None
+    of_total = valor_total_of(s["itens_pdf"]) if s["itens_pdf"] else None
     render_cards(s["totais_originais"], of_total)
 
     if not s["itens_pdf"]:
