@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import date, datetime
+import re
 import time
 
 import pandas as pd
@@ -47,6 +48,17 @@ def fmt_saldo(v) -> str:
     if v is None:
         return "?"
     return f"{v:g}"
+
+
+def normalizar_of(valor) -> str:
+    texto = re.sub(r"\s+", " ", str(valor or "")).strip().upper()
+    m = re.search(r"OF[-_ ]?\d+", texto)
+    return m.group(0).replace(" ", "").replace("_", "-") if m else texto
+
+
+def of_ja_baixada(dados, numero_of) -> bool:
+    ofs_existentes = dados.df_baixas.get("of", pd.Series(dtype=object)).dropna()
+    return any(normalizar_of(v) == normalizar_of(numero_of) for v in ofs_existentes)
 
 
 def injetar_css() -> None:
@@ -421,6 +433,22 @@ def render_confirmar() -> None:
                         )
                     else:
                         st.success(f"Original atualizado (backup em `{backup}`)")
+                        ofs_dir = config.OFS_DIR
+                        ofs_dir.mkdir(parents=True, exist_ok=True)
+                        copiadas = []
+                        for nome in s.get("origens", []):
+                            fonte = config.INPUT_DIR / nome
+                            if not fonte.exists():
+                                continue
+                            destino = ofs_dir / fonte.name
+                            cont = 2
+                            while destino.exists():
+                                destino = ofs_dir / f"{fonte.stem}_{cont}{fonte.suffix}"
+                                cont += 1
+                            destino.write_bytes(fonte.read_bytes())
+                            copiadas.append(destino.name)
+                        if copiadas:
+                            st.success(f"📄 PDF(s) arquivado(s) em `data/ofs/`: {', '.join(copiadas)}")
         else:
             if st.button("⬇️ Preparar planilha atualizada (preserva layout)", type="primary", width="stretch"):
                 gravar_no_template(s["dados"], s["lancamentos"])
@@ -475,6 +503,14 @@ def render_confirmar() -> None:
         else:
             s["sinonimos_salvos"] = 0
         numero_of = extrair_numero_of(s["origens"][0]) if s["origens"] else "OF"
+        if of_ja_baixada(s["dados"], numero_of):
+            st.error(
+                f"⛔ A OF **{normalizar_of(numero_of)}** já possui baixa registrada na planilha "
+                "(aba 'Baixas (Lançamentos)', coluna 'Nº Pedido/NF/OF'). "
+                "Para evitar lançamentos duplicados, a baixa foi **cancelada**. "
+                "Verifique se o arquivo PDF já foi processado antes."
+            )
+            return
         s["lancamentos"] = aplicar_baixas(s["dados"], escolhas, numero_of)
         registrar_baixa(numero_of, s["lancamentos"], s.get("origem_caminho"))
         s["baixa_aplicada"] = True
