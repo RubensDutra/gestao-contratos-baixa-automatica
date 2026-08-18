@@ -4,6 +4,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 INPUT_DIR = DATA_DIR / "inputs"
 EXPORT_DIR = DATA_DIR / "export"
+OFS_DIR = DATA_DIR / "ofs"
 
 PLANILHA_PADRAO = INPUT_DIR / "CONTROLE_DE_CONTRATO.xlsx"
 PDFS_PADRAO = INPUT_DIR

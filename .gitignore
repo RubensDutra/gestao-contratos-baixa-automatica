@@ -12,8 +12,10 @@ venv/
 # Dados sensíveis do contrato (não vão para o GitHub)
 data/*.xlsx
 data/*.json
+data/*.pdf
 data/export/
 data/inputs/
+data/ofs/
 sinonimos.txt
 
 # SO
