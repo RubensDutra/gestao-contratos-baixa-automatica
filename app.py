@@ -76,9 +76,9 @@ def resetar_processamento() -> None:
 def sidebar_planilha() -> None:
     s = st.session_state
     st.sidebar.subheader("📊 Planilha base")
-    opcao = st.sidebar.radio("Origem", ["Upload (.xlsx)", "Pasta data/inputs"], horizontal=True)
+    opcao = st.sidebar.radio("Origem", ["Enviar (.xlsx)", "Pasta data/inputs"], horizontal=True)
     origem = None
-    if opcao == "Upload (.xlsx)":
+    if opcao == "Enviar (.xlsx)":
         up = st.sidebar.file_uploader("CONTROLE_DE_CONTRATO.xlsx", type=["xlsx"])
         if up is not None:
             origem = (up, up.name)
@@ -217,14 +217,14 @@ def _linha_tabela(r, nome_of: str) -> dict:
         "PDF - Código": it.codigo,
         "PDF - Descrição": it.descricao,
         "PDF - Qtd": f"{it.quantidade:g} {it.unidade}",
-        "PDF - Valor Unit": fmt_moeda(it.valor_unitario),
+        "PDF - Valor Unitário": fmt_moeda(it.valor_unitario),
         "PDF - Total": fmt_moeda(it.valor_total),
         "Planilha - Linha": linha_mostrada,
         "Planilha - Código": (e or {}).get("codigo_barras", "—"),
         "Planilha - Descrição": (e or {}).get("descricao", "—"),
         "Planilha - Saldo": f"{(e or {}).get('saldo_disponivel', 0.0):g}",
         "Similaridade": f"{(e or {}).get('similaridade', 0)}%" if e else "—",
-        "Status": LABEL_STATUS[r.status],
+        "Situação": LABEL_STATUS[r.status],
     }
 
 
@@ -246,7 +246,7 @@ def render_tabela() -> None:
         cor = cores.get(v, "#888")
         return f"color: {cor}; font-weight: 600;"
 
-    estilizado = df.style.map(estilo_status, subset=["Status"])
+    estilizado = df.style.map(estilo_status, subset=["Situação"])
     st.dataframe(
         estilizado,
         width="stretch",
