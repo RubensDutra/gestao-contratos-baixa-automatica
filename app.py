@@ -148,6 +148,8 @@ def sidebar_pdfs() -> None:
                 it = []
             itens.extend(it)
             origens.extend([nome] * len(it))
+        for idx, it in enumerate(itens):
+            it.ordem = idx
         s["itens_pdf"] = itens
         s["origens"] = origens
         if s["dados"] is not None:
