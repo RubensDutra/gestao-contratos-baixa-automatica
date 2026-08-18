@@ -46,7 +46,7 @@ PREFIXOS_IGNORAR = (
 CABECALHOS_TABELA = {
     "codigo": ["CÓDIGO", "COD", "CÓDIGO DE BARRAS", "CÓD. ITEM"],
     "descricao": ["DESCRIÇÃO", "DESCRICAO", "PRODUTO", "ESPECIFICAÇÃO", "ITEM"],
-    "quantidade": ["QUANTIDADE", "QTDE", "QTD"],
+    "quantidade": ["QUANTIDADE", "QTDE", "QTD", "QUANT"],
     "unidade": ["UND", "UNIDADE", "UN", "UM"],
     "valor_unitario": ["VALOR UNITÁRIO", "VALOR UNIT", "PREÇO UNIT", "PRECO UNIT", "VALOR UND", "VLR. UNIT."],
     "valor_total": ["VALOR TOTAL", "TOTAL", "VALOR", "VLR. TOTAL"],
