@@ -291,7 +291,7 @@ def render_detalhes() -> None:
                 expanded=True,
             ):
                 opcoes = {
-                    f"Linha {c['linha']} · código {c['codigo_barras']} · saldo {fmt_saldo(c['saldo_disponivel'])} · sim {c['similaridade']}%"
+                    f"Linha {c['linha']} · código {c['codigo_barras']} · saldo {fmt_saldo(c['saldo_disponivel'])} · valor unit. {fmt_moeda(c['preco_unit'])} · sim {c['similaridade']}%"
                     : c["linha"]
                     for c in r.candidatos
                 }
