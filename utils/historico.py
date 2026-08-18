@@ -1,17 +1,12 @@
 from datetime import datetime
 import json
+from pathlib import Path
 
-import config
-
-
-def _caminho(p=None):
-    if p is not None:
-        return p
-    return getattr(config, "HISTORICO_PATH", None) or (config.DATA_DIR / "historico_baixas.json")
+DEFAULT_CAMINHO = Path(__file__).resolve().parent.parent / "data" / "historico_baixas.json"
 
 
 def ler_historico(caminho=None) -> list:
-    p = _caminho(caminho)
+    p = caminho or DEFAULT_CAMINHO
     if not p.exists():
         return []
     try:
@@ -21,7 +16,7 @@ def ler_historico(caminho=None) -> list:
 
 
 def registrar_baixa(numero_of, lancamentos, arquivo_origem=None, caminho=None, max_entradas=50) -> None:
-    p = _caminho(caminho)
+    p = caminho or DEFAULT_CAMINHO
     p.parent.mkdir(parents=True, exist_ok=True)
     registros = ler_historico(p)
     itens = [
