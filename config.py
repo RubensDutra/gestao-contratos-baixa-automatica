@@ -22,6 +22,8 @@ COLUNAS_ITENS = {
     "descricao": ["DESCRIÇÃO", "DESCRIÇÃO DO ITEM", "DESCRICAO", "PRODUTO", "ITEM"],
     "preco_unit": ["PREÇO UNIT. (R$)", "PREÇO UNIT", "PRECO UNIT", "VALOR UNITÁRIO", "VALOR UNIT", "PRECO UNITARIO"],
     "saldo": ["SALDO DISPONÍVEL (ATUAL)", "SALDO DISPONÍVEL", "SALDO ATUAL", "SALDO", "QTDE DISPONÍVEL"],
+    "qtd_contratada": ["QTD. CONTRATADA", "QTD CONTRATADA", "QTDE CONTRATADA", "QUANTIDADE CONTRATADA"],
+    "saldo_base": ["SALDO BASE", "SALDO INICIAL", "QTD. BASE", "QTDE BASE"],
     "grupo": ["GRUPO"],
     "num_item": ["Nº ITEM", "NUM ITEM", "Nº ITEM (AUTO)", "NUM ITEM (AUTO)"],
 }

@@ -150,9 +150,36 @@ def _garantir_colunas(df: pd.DataFrame, colunas: list) -> pd.DataFrame:
     return df[colunas]
 
 
+def _str_codigo(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v).strip()
+
+
+def _preencher_derivados(df_itens: pd.DataFrame, df_baixas: pd.DataFrame) -> pd.DataFrame:
+    if df_itens.empty:
+        return df_itens
+    df_itens["saldo_disponivel"] = pd.to_numeric(df_itens["saldo_disponivel"], errors="coerce")
+    faltando = df_itens["saldo_disponivel"].isna()
+    if not faltando.any():
+        return df_itens
+    qtd_baixada = pd.Series(0.0, index=df_itens.index)
+    if df_baixas is not None and not df_baixas.empty:
+        bq = pd.to_numeric(df_baixas.get("quantidade"), errors="coerce").fillna(0.0)
+        bc = df_baixas.get("codigo").map(_str_codigo)
+        soma = pd.DataFrame({"c": bc, "q": bq}).groupby("c")["q"].sum()
+        qtd_baixada = df_itens["codigo_barras"].map(_str_codigo).map(soma).fillna(0.0)
+    base = pd.to_numeric(df_itens.get("saldo_base"), errors="coerce")
+    saldo_calc = (base - qtd_baixada).round(2)
+    df_itens.loc[faltando, "saldo_disponivel"] = saldo_calc[faltando]
+    return df_itens
+
+
 def extrair_itens(ws, mapa: MapaColunas) -> pd.DataFrame:
     linhas = _extrair_linhas(ws, mapa, config.COLUNAS_ITENS)
-    colunas = ["linha", "codigo_barras", "descricao", "preco_unit", "saldo_disponivel", "grupo", "num_item"]
+    colunas = ["linha", "codigo_barras", "descricao", "preco_unit", "saldo_disponivel", "qtd_contratada", "saldo_base", "grupo", "num_item"]
     df = pd.DataFrame(linhas)
     if not df.empty:
         df = df.rename(columns={"saldo": "saldo_disponivel"})
@@ -219,6 +246,7 @@ def carregar_planilha(origem) -> DadosPlanilha:
 
     df_itens = extrair_itens(aba_itens_valores, mapa_itens)
     df_baixas = extrair_baixas(aba_baixas_valores, mapa_baixas)
+    df_itens = _preencher_derivados(df_itens, df_baixas)
 
     return DadosPlanilha(
         caminho=caminho,
