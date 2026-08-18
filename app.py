@@ -433,7 +433,7 @@ def render_confirmar() -> None:
                         )
                     else:
                         st.success(f"Original atualizado (backup em `{backup}`)")
-                        ofs_dir = config.OFS_DIR
+                        ofs_dir = getattr(config, "OFS_DIR", None) or (config.DATA_DIR / "ofs")
                         ofs_dir.mkdir(parents=True, exist_ok=True)
                         copiadas = []
                         for nome in s.get("origens", []):
