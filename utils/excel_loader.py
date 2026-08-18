@@ -265,12 +265,21 @@ def carregar_planilha(origem) -> DadosPlanilha:
 def totais_contrato(dados: DadosPlanilha) -> dict:
     df = dados.df_itens
     if df.empty:
-        return {"valor_total": 0.0, "saldo_total": 0.0}
+        return {"valor_contratado": 0.0, "valor_total": 0.0, "saldo_total": 0.0}
     preco = pd.to_numeric(df["preco_unit"], errors="coerce").fillna(0.0)
     saldo = pd.to_numeric(df["saldo_disponivel"], errors="coerce").fillna(0.0)
+    qtd = pd.to_numeric(df.get("qtd_contratada"), errors="coerce")
+    if qtd is not None and qtd.notna().any():
+        valor_contratado = float((preco * qtd.fillna(0.0)).sum())
+    else:
+        valor_contratado = float((preco * saldo).sum())
     valor_total = float((preco * saldo).sum())
     saldo_total = float(saldo.sum())
-    return {"valor_total": round(valor_total, 2), "saldo_total": round(saldo_total, 2)}
+    return {
+        "valor_contratado": round(valor_contratado, 2),
+        "valor_total": round(valor_total, 2),
+        "saldo_total": saldo_total,
+    }
 
 
 def salvar_template(dados: DadosPlanilha, destino) -> None:

@@ -70,6 +70,7 @@ def iniciar_estado() -> None:
     s.setdefault("dados", None)
     s.setdefault("origem_nome", None)
     s.setdefault("totais_originais", None)
+    s.setdefault("saldos_sessao", None)
     s.setdefault("fontes_pdf", [])
     s.setdefault("itens_pdf", [])
     s.setdefault("origens", [])
@@ -125,6 +126,10 @@ def sidebar_planilha() -> None:
         s["dados"] = dados
         s["origem_nome"] = origem[1]
         s["totais_originais"] = totais_contrato(dados)
+        s["saldos_sessao"] = {
+            "unid": s["totais_originais"]["saldo_total"],
+            "valor": s["totais_originais"]["valor_total"],
+        }
         resetar_processamento()
         st.sidebar.success(f"Planilha carregada: {len(dados.df_itens)} itens | {origem[1]}")
         ausentes_baixas = [c for c in config.COLUNAS_BAIXAS if c not in dados.mapa_baixas.colunas]
@@ -192,21 +197,25 @@ def sidebar_pdfs() -> None:
 def render_cards(totais_originais: dict, of_total: float | None) -> None:
     s = st.session_state
     tema = "tema-escuro" if s["tema"] == "escuro" else "tema-claro"
-    totais_atual = totais_contrato(s["dados"])
     of_valor = of_total if of_total is not None else 0.0
     of_sub = "—" if of_total is None else f"{len(s['itens_pdf'])} itens na OF"
-    baixado = round(totais_originais["valor_total"] - totais_atual["valor_total"], 2)
-    baixa_sub = "nenhuma baixa nesta sessão" if baixado == 0 else f"R$ {fmt_moeda(baixado)} já baixados"
+    saldo_sessao = s.get("saldos_sessao") or {"unid": 0.0, "valor": 0.0}
+    baixado_unid = totais_originais["saldo_total"] - saldo_sessao["unid"]
+    baixa_sub = (
+        "nenhuma baixa nesta sessão"
+        if baixado_unid <= 0
+        else f"{baixado_unid:,.0f} unid baixadas nesta sessão"
+    )
     html = f"""
     <div class="cards {tema}">
       <div class="card card-total">
         <div class="card-label">Valor Total do Contrato</div>
-        <div class="card-value">{fmt_moeda(totais_originais["valor_total"])}</div>
-        <div class="card-sub">saldo inicial: {totais_originais["saldo_total"]:,.0f} unidades</div>
+        <div class="card-value">{fmt_moeda(totais_originais["valor_contratado"])}</div>
+        <div class="card-sub">valor fixo do contrato · saldo inicial: {totais_originais["saldo_total"]:,.0f} unid</div>
       </div>
       <div class="card card-saldo">
         <div class="card-label">Saldo Disponível</div>
-        <div class="card-value">{fmt_moeda(totais_atual["valor_total"])}</div>
+        <div class="card-value">{fmt_moeda(saldo_sessao["valor"])}</div>
         <div class="card-sub">{baixa_sub}</div>
       </div>
       <div class="card card-of">
@@ -461,6 +470,8 @@ def render_confirmar() -> None:
         )
         if st.button("↩️ Desfazer baixa", width="stretch"):
             desfazer_baixas(s["dados"], s["lancamentos"])
+            s["saldos_sessao"]["unid"] += sum(l.quantidade for l in s["lancamentos"])
+            s["saldos_sessao"]["valor"] += round(sum(l.valor_total for l in s["lancamentos"]), 2)
             s["lancamentos"] = []
             s["baixa_aplicada"] = False
             s["planilha_bytes"] = None
@@ -512,6 +523,8 @@ def render_confirmar() -> None:
             )
             return
         s["lancamentos"] = aplicar_baixas(s["dados"], escolhas, numero_of)
+        s["saldos_sessao"]["unid"] -= sum(l.quantidade for l in s["lancamentos"])
+        s["saldos_sessao"]["valor"] -= round(sum(l.valor_total for l in s["lancamentos"]), 2)
         registrar_baixa(numero_of, s["lancamentos"], s.get("origem_caminho"))
         s["baixa_aplicada"] = True
         st.rerun()
