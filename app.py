@@ -72,6 +72,7 @@ def iniciar_estado() -> None:
     s.setdefault("totais_originais", None)
     s.setdefault("saldos_sessao", None)
     s.setdefault("fontes_pdf", [])
+    s.setdefault("origens_bytes", {})
     s.setdefault("itens_pdf", [])
     s.setdefault("origens", [])
     s.setdefault("resultados", [])
@@ -158,6 +159,7 @@ def sidebar_pdfs() -> None:
     chave = "|".join(n for n, _ in fontes)
     if not fontes:
         s["fontes_pdf"] = []
+        s["origens_bytes"] = {}
         s["itens_pdf"] = []
         s["origens"] = []
         s["resultados"] = []
@@ -170,6 +172,9 @@ def sidebar_pdfs() -> None:
 
     if chave != s["fontes_pdf"]:
         s["fontes_pdf"] = chave
+        s["origens_bytes"] = {
+            n: (f.getvalue() if hasattr(f, "getvalue") else None) for n, f in fontes
+        }
         itens, origens = [], []
         for nome, fonte in fontes:
             try:
@@ -447,15 +452,20 @@ def render_confirmar() -> None:
                         ofs_dir.mkdir(parents=True, exist_ok=True)
                         copiadas = []
                         for nome in s.get("origens", []):
-                            fonte = config.INPUT_DIR / nome
-                            if not fonte.exists():
-                                continue
-                            destino = ofs_dir / fonte.name
+                            nome_arq = Path(nome).name
+                            fonte = config.INPUT_DIR / nome_arq
+                            if fonte.exists():
+                                conteudo = fonte.read_bytes()
+                            else:
+                                conteudo = s.get("origens_bytes", {}).get(nome)
+                                if not conteudo:
+                                    continue
+                            destino = ofs_dir / nome_arq
                             cont = 2
                             while destino.exists():
-                                destino = ofs_dir / f"{fonte.stem}_{cont}{fonte.suffix}"
+                                destino = ofs_dir / f"{Path(nome_arq).stem}_{cont}{Path(nome_arq).suffix}"
                                 cont += 1
-                            destino.write_bytes(fonte.read_bytes())
+                            destino.write_bytes(conteudo)
                             copiadas.append(destino.name)
                         if copiadas:
                             st.success(f"📄 PDF(s) arquivado(s) em `data/ofs/`: {', '.join(copiadas)}")

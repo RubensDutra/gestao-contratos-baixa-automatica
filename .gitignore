@@ -16,6 +16,7 @@ data/*.pdf
 data/export/
 data/inputs/
 data/ofs/
+data/backup/
 sinonimos.txt
 
 # SO
