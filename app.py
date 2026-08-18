@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import date, datetime
+import time
 
 import pandas as pd
 import streamlit as st
@@ -403,8 +404,23 @@ def render_confirmar() -> None:
                     backup_dir.mkdir(parents=True, exist_ok=True)
                     backup = backup_dir / f"CONTROLE_DE_CONTRATO_BACKUP_{date.today().isoformat()}_{datetime.now().strftime('%H%M%S')}.xlsx"
                     backup.write_bytes(origem.read_bytes())
-                    origem.write_bytes(s["planilha_bytes"])
-                    st.success(f"Original atualizado (backup em `{backup}`)")
+                    erro = None
+                    for _ in range(3):
+                        try:
+                            origem.write_bytes(s["planilha_bytes"])
+                            erro = None
+                            break
+                        except PermissionError as e:
+                            erro = e
+                            time.sleep(1)
+                    if erro:
+                        st.error(
+                            "Não foi possível gravar: o CONTROLE_DE_CONTRATO.xlsx está **aberto no Excel** "
+                            "ou sendo sincronizado pelo OneDrive. Feche o arquivo, aguarde a sincronização "
+                            "e clique em Atualizar novamente (o backup já foi salvo)."
+                        )
+                    else:
+                        st.success(f"Original atualizado (backup em `{backup}`)")
         else:
             if st.button("⬇️ Preparar planilha atualizada (preserva layout)", type="primary", width="stretch"):
                 gravar_no_template(s["dados"], s["lancamentos"])
