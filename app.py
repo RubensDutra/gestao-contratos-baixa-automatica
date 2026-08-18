@@ -7,6 +7,7 @@ import streamlit as st
 import config
 from utils.baixa_writer import aplicar_baixas, desfazer_baixas, gravar_no_template
 from utils.excel_loader import carregar_planilha, totais_contrato, exportar_bytes, ErroPlanilha
+from utils.historico import ler_historico, registrar_baixa
 from utils.matcher import (
     corresponder_todos,
     resumo,
@@ -352,6 +353,23 @@ def render_detalhes() -> None:
             )
 
 
+def sidebar_historico() -> None:
+    registros = ler_historico()
+    if not registros:
+        return
+    st.sidebar.divider()
+    with st.sidebar.expander("📜 Histórico de baixas"):
+        for reg in reversed(registros[-10:]):
+            data_hora = reg.get("data_hora", "")[:16].replace("T", " ")
+            total = fmt_moeda(reg.get("total_valor", 0.0))
+            st.markdown(
+                f"**{reg.get('numero_of', 'OF')}** · {reg.get('total_itens', 0)} itens · {total}\n\n"
+                f"<small>{data_hora} — {reg.get('arquivo_origem', '')}</small>",
+                unsafe_allow_html=True,
+            )
+            st.divider()
+
+
 def render_confirmar() -> None:
     s = st.session_state
     if s["baixa_aplicada"]:
@@ -442,6 +460,7 @@ def render_confirmar() -> None:
             s["sinonimos_salvos"] = 0
         numero_of = extrair_numero_of(s["origens"][0]) if s["origens"] else "OF"
         s["lancamentos"] = aplicar_baixas(s["dados"], escolhas, numero_of)
+        registrar_baixa(numero_of, s["lancamentos"], s.get("origem_caminho"))
         s["baixa_aplicada"] = True
         st.rerun()
 
@@ -456,6 +475,7 @@ def main() -> None:
     st.sidebar.divider()
     sidebar_planilha()
     sidebar_pdfs()
+    sidebar_historico()
     st.sidebar.divider()
     if st.sidebar.button("🗑️ Reiniciar sessão", width="stretch"):
         for k in list(s.keys()):
