@@ -127,6 +127,8 @@ def _limpar_celula(v):
 
 def _extrair_linhas(ws, mapa: MapaColunas, colunas_alvo: dict) -> list:
     linhas = []
+    if ws is None or mapa is None or mapa.linha_cabecalho is None:
+        return linhas
     for r in range(mapa.linha_cabecalho + 1, ws.max_row + 1):
         valores = {}
         vazia = True
@@ -229,6 +231,8 @@ def carregar_planilha(origem) -> DadosPlanilha:
 
     aba_itens_valores = localizar_aba(wb_valores, [config.ABAS["itens"]])
     aba_baixas_valores = localizar_aba(wb_valores, [config.ABAS["baixas"]])
+    if aba_baixas_valores is None:
+        aba_baixas_valores = wb_valores.active
 
     linha_cab = detectar_linha_cabecalho(aba_itens, config.COLUNAS_ITENS)
     mapa_itens = mapear_colunas(aba_itens, linha_cab, config.COLUNAS_ITENS)
