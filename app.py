@@ -206,10 +206,12 @@ def render_badges() -> None:
 def _linha_tabela(r, nome_of: str) -> dict:
     it = r.item_pdf
     e = r.escolhido
+    linha_mostrada = str((e or {}).get("linha", "—"))
     if r.status == STATUS_DUPLICIDADE:
-        ordem_item = it.ordem
-        escolha = st.session_state["escolhas"].get(ordem_item)
-        e = next((c for c in r.candidatos if c["linha"] == escolha), None)
+        escolhas = st.session_state["escolhas"].get(it.ordem, [])
+        e = next((c for c in r.candidatos if c["linha"] in escolhas), None) if escolhas else None
+        if escolhas:
+            linha_mostrada = ", ".join(str(l) for l in escolhas)
     return {
         "OF": nome_of,
         "PDF - Código": it.codigo,
@@ -217,7 +219,7 @@ def _linha_tabela(r, nome_of: str) -> dict:
         "PDF - Qtd": f"{it.quantidade:g} {it.unidade}",
         "PDF - Valor Unit": fmt_moeda(it.valor_unitario),
         "PDF - Total": fmt_moeda(it.valor_total),
-        "Planilha - Linha": str((e or {}).get("linha", "—")),
+        "Planilha - Linha": linha_mostrada,
         "Planilha - Código": (e or {}).get("codigo_barras", "—"),
         "Planilha - Descrição": (e or {}).get("descricao", "—"),
         "Planilha - Saldo": f"{(e or {}).get('saldo_disponivel', 0.0):g}",
@@ -261,14 +263,25 @@ def render_detalhes() -> None:
     for r in s["resultados"]:
         it = r.item_pdf
         if r.status == STATUS_DUPLICIDADE:
-            with st.expander(f"⚠️ Duplicidade — escolha o grupo para: {it.descricao[:70]}", expanded=True):
+            with st.expander(
+                f"⚠️ Duplicidade — marque os grupos/itens para: {it.descricao[:70]}",
+                expanded=True,
+            ):
                 opcoes = {
                     f"Linha {c['linha']} · código {c['codigo_barras']} · saldo {c['saldo_disponivel']:g} · sim {c['similaridade']}%"
                     : c["linha"]
                     for c in r.candidatos
                 }
-                escolha = st.radio("De qual grupo/item descontar?", list(opcoes), key=f"dup_{it.ordem}")
-                s["escolhas"][it.ordem] = opcoes[escolha]
+                selecionadas = st.multiselect(
+                    "Quais grupos/itens descontar? (pode marcar várias)",
+                    list(opcoes),
+                    key=f"dup_{it.ordem}",
+                )
+                s["escolhas"][it.ordem] = [opcoes[o] for o in selecionadas]
+                st.caption(
+                    f"Quantidade do OF aplicada a cada opção marcada: {it.quantidade:g} {it.unidade} — "
+                    "gera um lançamento por opção selecionada."
+                )
         elif r.status == STATUS_NAO_ENCONTRADO:
             st.error(
                 f"Item não encontrado na planilha: **{it.descricao}** "
@@ -336,12 +349,16 @@ def render_confirmar() -> None:
     baixaveis = [
         r for r in s["resultados"]
         if r.status == STATUS_APROVADO
-        or (r.status == STATUS_DUPLICIDADE and r.item_pdf.ordem in s["escolhas"])
+        or (r.status == STATUS_DUPLICIDADE and s["escolhas"].get(r.item_pdf.ordem))
     ]
     if not baixaveis:
         st.caption("Nenhum item pronto para baixa — resolva duplicidades e itens não encontrados.")
         return
-    total_valor = sum(r.item_pdf.quantidade * r.item_pdf.valor_unitario for r in baixaveis)
+    total_valor = sum(
+        r.item_pdf.quantidade * r.item_pdf.valor_unitario
+        * (len(s["escolhas"].get(r.item_pdf.ordem, [1])) if r.status == STATUS_DUPLICIDADE else 1)
+        for r in baixaveis
+    )
     if st.button(
         f"✅ Confirmar e Dar Baixa ({len(baixaveis)} itens · {fmt_moeda(total_valor)})",
         type="primary",
@@ -352,7 +369,8 @@ def render_confirmar() -> None:
             if r.status == STATUS_APROVADO:
                 escolhas.append({"linha": r.escolhido["linha"], "quantidade": r.item_pdf.quantidade})
             else:
-                escolhas.append({"linha": s["escolhas"][r.item_pdf.ordem], "quantidade": r.item_pdf.quantidade})
+                for linha in s["escolhas"][r.item_pdf.ordem]:
+                    escolhas.append({"linha": linha, "quantidade": r.item_pdf.quantidade})
         numero_of = extrair_numero_of(s["origens"][0]) if s["origens"] else "OF"
         s["lancamentos"] = aplicar_baixas(s["dados"], escolhas, numero_of)
         s["baixa_aplicada"] = True
