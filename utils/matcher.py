@@ -62,7 +62,7 @@ def _sugestoes(item_pdf, df_itens, preco_pdf, top=3) -> list:
 
 
 def corresponder_itens(item_pdf, df_itens, limiar=None) -> ResultadoMatch:
-    limiar = limiar if limiar is not None else config.FUZZY_LIMIAR_DESCRICAO
+    limiar = limiar if limiar is not None else config.FUZZY_LIMIAR_PRECO_IGUAL
     preco_pdf = round(float(item_pdf.valor_unitario or 0.0), config.PRECISAO_VALOR)
 
     candidatos = []

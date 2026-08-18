@@ -54,6 +54,7 @@ def iniciar_estado() -> None:
     s.setdefault("origens", [])
     s.setdefault("resultados", [])
     s.setdefault("escolhas", {})
+    s.setdefault("forcados", {})
     s.setdefault("baixa_aplicada", False)
     s.setdefault("lancamentos", [])
     s.setdefault("planilha_bytes", None)
@@ -67,6 +68,7 @@ def resetar_processamento() -> None:
     s["origens"] = []
     s["resultados"] = []
     s["escolhas"] = {}
+    s["forcados"] = {}
     s["baixa_aplicada"] = False
     s["lancamentos"] = []
     s["planilha_bytes"] = None
@@ -131,6 +133,7 @@ def sidebar_pdfs() -> None:
         s["origens"] = []
         s["resultados"] = []
         s["escolhas"] = {}
+        s["forcados"] = {}
         s["baixa_aplicada"] = False
         s["lancamentos"] = []
         return
@@ -156,6 +159,7 @@ def sidebar_pdfs() -> None:
             s["resultados"] = corresponder_todos(itens, s["dados"].df_itens)
         s["baixa_aplicada"] = False
         s["lancamentos"] = []
+        s["forcados"] = {}
         st.sidebar.caption(f"{len(itens)} itens lidos dos PDFs")
 
 
@@ -212,6 +216,11 @@ def _linha_tabela(r, nome_of: str) -> dict:
         e = next((c for c in r.candidatos if c["linha"] in escolhas), None) if escolhas else None
         if escolhas:
             linha_mostrada = ", ".join(str(l) for l in escolhas)
+    elif r.status == STATUS_NAO_ENCONTRADO:
+        forcado = st.session_state["forcados"].get(it.ordem)
+        if forcado:
+            e = next((c for c in r.sugestoes if c["linha"] == forcado), None)
+            linha_mostrada = str(forcado)
     return {
         "OF": nome_of,
         "PDF - Código": it.codigo,
@@ -296,6 +305,20 @@ def render_detalhes() -> None:
                         width="stretch",
                         hide_index=True,
                     )
+                opcoes = [("(não usar — deixar de fora)", None)] + [
+                    (
+                        f"Linha {sg['linha']} · {sg['descricao'][:45]} · {fmt_moeda(sg['preco_unit'])} "
+                        f"· saldo {sg['saldo_disponivel']:g} · sim {sg['similaridade']}%",
+                        sg["linha"],
+                    )
+                    for sg in r.sugestoes
+                ]
+                rotulos = [o[0] for o in opcoes]
+                escolha = st.selectbox("Corrigir manualmente — usar item da planilha?", rotulos, key=f"forc_{it.ordem}")
+                if escolha.startswith("(não usar"):
+                    s["forcados"].pop(it.ordem, None)
+                else:
+                    s["forcados"][it.ordem] = next(v for r_, v in opcoes if r_ == escolha)
         elif r.status == STATUS_SALDO_INSUFICIENTE:
             e = r.escolhido
             st.warning(
@@ -350,6 +373,7 @@ def render_confirmar() -> None:
         r for r in s["resultados"]
         if r.status == STATUS_APROVADO
         or (r.status == STATUS_DUPLICIDADE and s["escolhas"].get(r.item_pdf.ordem))
+        or (r.status == STATUS_NAO_ENCONTRADO and r.item_pdf.ordem in s["forcados"])
     ]
     if not baixaveis:
         st.caption("Nenhum item pronto para baixa — resolva duplicidades e itens não encontrados.")
@@ -368,6 +392,8 @@ def render_confirmar() -> None:
         for r in baixaveis:
             if r.status == STATUS_APROVADO:
                 escolhas.append({"linha": r.escolhido["linha"], "quantidade": r.item_pdf.quantidade})
+            elif r.status == STATUS_NAO_ENCONTRADO:
+                escolhas.append({"linha": s["forcados"][r.item_pdf.ordem], "quantidade": r.item_pdf.quantidade})
             else:
                 for linha in s["escolhas"][r.item_pdf.ordem]:
                     escolhas.append({"linha": linha, "quantidade": r.item_pdf.quantidade})

@@ -25,6 +25,8 @@ def aplicar_baixas(dados, escolhas, numero_of="OF"):
     for esc in escolhas:
         linha = esc["linha"]
         qtd = float(esc["quantidade"])
+        if qtd <= 0:
+            continue
         idx = dados.df_itens.index[dados.df_itens["linha"] == linha]
         if len(idx) != 1:
             continue
