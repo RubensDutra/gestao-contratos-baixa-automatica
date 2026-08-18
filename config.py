@@ -7,6 +7,7 @@ EXPORT_DIR = DATA_DIR / "export"
 
 PLANILHA_PADRAO = INPUT_DIR / "CONTROLE_DE_CONTRATO.xlsx"
 PDFS_PADRAO = INPUT_DIR
+SINONIMOS_PATH = BASE_DIR / "sinonimos.txt"
 
 ABAS = {
     "itens": "Itens do Contrato",

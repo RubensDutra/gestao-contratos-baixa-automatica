@@ -13,6 +13,7 @@ venv/
 data/*.xlsx
 data/export/
 data/inputs/
+sinonimos.txt
 
 # SO
 .DS_Store

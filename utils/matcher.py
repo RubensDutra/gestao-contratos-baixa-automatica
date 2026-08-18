@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import math
+import re
 
 from thefuzz import fuzz
 
@@ -34,6 +35,39 @@ def similaridade(a: str, b: str) -> int:
     )
 
 
+def carregar_sinonimos(caminho=None) -> list:
+    p = caminho or config.SINONIMOS_PATH
+    if not p.exists():
+        p.write_text(
+            "# Dicionário de sinônimos: corrija nomes errados que vêm nos PDFs das OFs.\n"
+            "# Formato: NOME COMO VEM NO PDF = NOME CORRETO NA PLANILHA\n"
+            "# Exemplo: FRAJA DO CONVERSOR = FLANGE DO CONVERSOR\n",
+            encoding="utf-8",
+        )
+    pares = []
+    for linha in p.read_text(encoding="utf-8").splitlines():
+        linha = linha.strip()
+        if not linha or linha.startswith("#") or "=" not in linha:
+            continue
+        errado, certo = linha.split("=", 1)
+        errado, certo = errado.strip().upper(), certo.strip().upper()
+        if errado and certo:
+            pares.append((errado, certo))
+    return pares
+
+
+def _variantes(descricao: str, sinonimos: list) -> list:
+    variantes = [descricao]
+    for errado, certo in sinonimos:
+        if re.search(re.escape(errado), descricao, re.IGNORECASE):
+            variantes.append(re.sub(re.escape(errado), certo, descricao, flags=re.IGNORECASE))
+    return variantes
+
+
+def _sim_max(descricao_pdf: str, descricao_plan: str, sinonimos: list) -> int:
+    return max(similaridade(v, descricao_plan) for v in _variantes(descricao_pdf, sinonimos))
+
+
 def _candidato(serie) -> dict:
     saldo = serie.get("saldo_disponivel")
     if isinstance(saldo, float) and math.isnan(saldo):
@@ -49,9 +83,10 @@ def _candidato(serie) -> dict:
 
 
 def _sugestoes(item_pdf, df_itens, preco_pdf, top=3) -> list:
+    sinonimos = carregar_sinonimos()
     sugestoes = []
     for _, serie in df_itens.iterrows():
-        sim = similaridade(item_pdf.descricao, serie.get("descricao", ""))
+        sim = _sim_max(item_pdf.descricao, serie.get("descricao", ""), sinonimos)
         if sim >= 60:
             cand = _candidato(serie)
             cand["similaridade"] = sim
@@ -64,13 +99,14 @@ def _sugestoes(item_pdf, df_itens, preco_pdf, top=3) -> list:
 def corresponder_itens(item_pdf, df_itens, limiar=None) -> ResultadoMatch:
     limiar = limiar if limiar is not None else config.FUZZY_LIMIAR_PRECO_IGUAL
     preco_pdf = round(float(item_pdf.valor_unitario or 0.0), config.PRECISAO_VALOR)
+    sinonimos = carregar_sinonimos()
 
     candidatos = []
     for _, serie in df_itens.iterrows():
         preco_plan = round(float(serie.get("preco_unit", 0.0) or 0.0), config.PRECISAO_VALOR)
         if preco_plan != preco_pdf:
             continue
-        sim = similaridade(item_pdf.descricao, serie.get("descricao", ""))
+        sim = _sim_max(item_pdf.descricao, serie.get("descricao", ""), sinonimos)
         if sim >= limiar:
             cand = _candidato(serie)
             cand["similaridade"] = sim
