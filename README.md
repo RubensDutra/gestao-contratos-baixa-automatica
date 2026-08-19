@@ -57,7 +57,22 @@ gestao-contratos-baixa-automatica/
 └── sinonimos.txt              # Dicionário de sinônimos (gerado na 1ª execução)
 ```
 
-> ⚠️ `data/*.xlsx`, `data/*.json`, `data/inputs/`, `data/export/` e `sinonimos.txt` estão no `.gitignore` — **dados do contrato não vão para o repositório**.
+> ⚠️ `data/*.xlsx`, `data/*.json`, `data/inputs/`, `data/export/`, `data/backup/` e `sinonimos.txt` estão no `.gitignore` — **dados reais do contrato nunca vão para o repositório**. Os únicos arquivos versionados em `data/inputs/` são os **dados de exemplo fictícios** descritos abaixo.
+
+## 🧪 Dados de exemplo (100% fictícios)
+
+Para você testar o sistema sem usar dados reais, o repositório inclui em `data/inputs/`:
+
+| Arquivo | O que demonstra |
+|---|---|
+| `CONTROLE_DE_CONTRATO.xlsx` | Planilha fictícia com 3 abas (`Resumo`, `Itens do Contrato`, `Baixas (Lançamentos)`), 15 itens, fórmulas `SUMIFS`/`IFERROR` e 2 lançamentos da OF-0001 |
+| `ORDEM DE FORNECIMENTO - OF-0001_EXEMPLO.pdf` | OF que **já consta na aba Baixas** → demonstra o bloqueio de OF repetida |
+| `ORDEM DE FORNECIMENTO - OF-0002_EXEMPLO.pdf` | OF com itens casando normalmente → demonstra a baixa **Aprovado** |
+| `ORDEM DE FORNECIMENTO - OF-0003_EXEMPLO.pdf` | Item com nome errado (`SEXTABADO`) e valor divergente → demonstra a **sugestão de sinônimo** |
+
+Todos os nomes, valores, CNPJ e números de contrato são **inventados** — não há qualquer vínculo com dados reais.
+
+Para usar com os seus dados reais, basta substituir esses arquivos pelos seus (ou usar o upload direto na sidebar). Ao atualizar o original, o app gera **backup automático** em `data/backup/`.
 
 ## 🚀 Instalação
 
@@ -89,8 +104,8 @@ Copie para `data/inputs/`:
 
 | Arquivo | Descrição |
 |---|---|
-| `CONTROLE_DE_CONTRATO.xlsx` | A planilha base do contrato |
-| `OF-XXXX_2026.pdf` | Os PDFs das Ordens de Fornecimento |
+| `CONTROLE_DE_CONTRATO.xlsx` | A planilha base do contrato (no repositório: versão fictícia de exemplo) |
+| `ORDEM DE FORNECIMENTO - OF-XXXX.pdf` | Os PDFs das Ordens de Fornecimento (no repositório: exemplos `OF-0001/0002/0003_EXEMPLO`) |
 
 Ou use o upload direto na sidebar do app.
 
